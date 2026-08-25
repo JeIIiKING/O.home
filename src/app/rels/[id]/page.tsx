@@ -10,6 +10,7 @@ import { useTheme } from '@/lib/ThemeProvider';
 import { useLocalList, newId } from '@/lib/postStore';
 import {
   Relation, REL_SEED, Character, CHAR_SEED, RelMember, QaEntry, QaAnswer, TlItem, findChar, Visibility, CharGrant,
+  auMember,
   RelAu, RelCpTag, charWithAu, charGrant,
   QaAnswerRow, QA_KEY, QA_SEED, MergedAnswer, answersFor,
 } from '@/lib/charStore';
@@ -292,6 +293,7 @@ export default function RelDetailPage() {
   const [qaRows, setQaRows] = useLocalList<QaAnswerRow>(QA_KEY, QA_SEED);
   const [qsetOpen, setQsetOpen] = useState(false);        // QUESTIONS 섹션 추가 — 질문 리스트 선택 모달
   const [delAsk, setDelAsk] = useState(false);   // 자관 삭제 확인
+  const [auDelAsk, setAuDelAsk] = useState<string | null>(null);  // AU 삭제 확인 (v2.0 — 자관 삭제와 별개)
   const del = useConfirmDelete();                // 멤버·타임라인 등 개별 삭제 확인
 
   const rel = rels.find(r => r.id === id);
@@ -617,11 +619,13 @@ export default function RelDetailPage() {
 
   /* 페어 좌우 배치 (v2.0 사용자 요청) — 예전에는 등록 순서가 곧 자리라, 처음 넣은 캐릭터는
      오른쪽 카드에서 추가해도 무조건 왼쪽에 들어갔다. pairRight로 오른쪽에 둘 캐릭터를 지정한다. */
+  // 한마디·대사 색·전신 위치는 AU마다 다를 수 있다 (v2.0) — 이 AU 값이 있으면 그것으로 갈아 끼운다
+  const asAu = (m: RelMember | null) => (m && !isBaseAu ? auMember(m, au) : m);
   const pairSlots: (RelMember | null)[] = isDuo
     ? (rel.pairRight
-      ? [rel.members.find(m => m.charId !== rel.pairRight) ?? null,
-        rel.members.find(m => m.charId === rel.pairRight) ?? null]
-      : [rel.members[0] ?? null, rel.members[1] ?? null])
+      ? [asAu(rel.members.find(m => m.charId !== rel.pairRight) ?? null),
+        asAu(rel.members.find(m => m.charId === rel.pairRight) ?? null)]
+      : [asAu(rel.members[0] ?? null), asAu(rel.members[1] ?? null)])
     : [];
 
   /** 이 멤버를 반대쪽 자리로 (좌 ↔ 우) */
@@ -683,14 +687,38 @@ export default function RelDetailPage() {
         <div className="rel-admin-actions">
           {/* AU 선택 중이면 그 AU의 일러·캐치프레이즈를 편집 (v1.9) */}
           <button className="btn btn-dark" style={{ height: 30, padding: '0 13px', fontSize: 11 }}
-            onClick={() => router.push(`/rels/${rel.id}/edit${isBaseAu ? '' : `?au=${au!.id}`}`)}>EDIT</button>
+            onClick={() => router.push(`/rels/${rel.id}/edit${isBaseAu ? '' : `?au=${au!.id}`}`)}>
+            {isBaseAu ? 'EDIT' : `EDIT ${au!.label}`}
+          </button>
+          {/* AU를 보는 중이면 지워지는 것도 그 AU다 (v2.0 사용자 발견 — 자관이 통째로 지워졌다).
+              EDIT은 AU를 따라가는데 DELETE만 안 따라가서, AU 화면에서 누르면 자관 전체가 날아갔다.
+              버튼 글씨에도 무엇이 지워지는지 그대로 쓴다 */}
           <button className="btn btn-dark" style={{ height: 30, padding: '0 13px', fontSize: 11 }}
-            onClick={() => setDelAsk(true)}>DELETE</button>
+            onClick={() => (isBaseAu ? setDelAsk(true) : setAuDelAsk(au!.id))}>
+            {isBaseAu ? 'DELETE' : `DELETE ${au!.label}`}
+          </button>
         </div>
       )}
 
+      {/* AU 하나만 삭제 (v2.0 사용자 발견) — 자관 삭제와 확실히 구분되게 무엇이 남는지까지 적는다 */}
+      <ConfirmModal open={auDelAsk !== null}
+        title={`AU 「${rel.aus.find(a => a.id === auDelAsk)?.label ?? ''}」를 삭제하시겠습니까?`}
+        body="이 AU의 일러·타임라인·문답이 함께 삭제되며 복구할 수 없습니다. 자관과 다른 AU는 그대로 남습니다."
+        onClose={() => setAuDelAsk(null)}
+        buttons={[
+          { label: 'DELETE', kind: 'accent', onClick: () => {
+            const gone = auDelAsk!;
+            updateRel({ aus: rel.aus.filter(a => a.id !== gone) });
+            // 이 AU에 달렸던 문답 답변도 함께 (주인 없는 줄이 남지 않게)
+            setQaRows(qaRows.filter(r => !(r.relId === rel.id && r.auId === gone)));
+            if (auId === gone) setAuId('base');
+            setAuDelAsk(null);
+          } },
+          { label: 'CANCEL', kind: 'ghost', onClick: () => setAuDelAsk(null) },
+        ]} />
+
       <ConfirmModal open={delAsk} title="자관을 삭제하시겠습니까?"
-        body="타임라인·문답·AU 정보가 함께 삭제되며 복구할 수 없습니다. 연동된 캐릭터 자체는 삭제되지 않습니다."
+        body={`「${rel.name}」 자관 전체가 삭제됩니다 — 타임라인·문답·AU ${rel.aus.length}개가 모두 함께 사라지며 복구할 수 없습니다. 연동된 캐릭터 자체는 삭제되지 않습니다.`}
         onClose={() => setDelAsk(false)}
         buttons={[
           { label: 'DELETE', kind: 'accent', onClick: () => {
@@ -719,10 +747,11 @@ export default function RelDetailPage() {
         )}
         {/* 자관명·캐치프레이즈 글씨색 — 직접 지정 시 (v1.9 사용자 요청, 미지정: 테마) */}
         {/* 이름 그림자 — 색·강도 직접 지정 (v2.0 사용자 요청, 미지정: 검정 60% · 기존과 동일) */}
+        {/* 이름 자체는 AU마다 다르게 붙일 수 있다 (v2.0 사용자 요청) — 안 정했으면 자관 이름 그대로 */}
         <h1 style={{
           fontFamily: familyOf(rel.fontId), color: rel.nameColor,
           textShadow: `0 4px 30px ${withAlpha(rel.nameShadowColor ?? '#000000', 0.6 * ((rel.nameShadow ?? 100) / 100))}`,
-        }}>{rel.name}</h1>
+        }}>{(!isBaseAu && au?.name?.trim()) || rel.name}</h1>
         <div className="catch" style={{ color: rel.cpColor }}>
           {au?.catchphrase || rel.catchphrase}
         </div>
@@ -749,7 +778,8 @@ export default function RelDetailPage() {
             {/* 전신 — 등록 이미지(AU별 우선) + 크기/앞뒤는 자관 수정의 미리보기에서 (v1.9) */}
             {pairSlots.map((sl, i) => {
               const cid = sl?.charId ?? '';
-              const m = rel.members.find(x => x.charId === cid);
+              // 전신 위치·크기도 AU 값 우선 (v2.0) — sl이 이미 AU 값으로 갈아 끼운 멤버다
+              const m = sl ?? rel.members.find(x => x.charId === cid);
               // AU는 자기 전신만 — base 전신을 물려받지 않음 (v1.9 사용자 확정)
               const fullRef = isBaseAu ? m?.fullImgId : au?.fulls?.[cid];
               if (!fullRef) return null;   // 등록 안 된 전신은 자리도 만들지 않는다
