@@ -1,16 +1,19 @@
 'use client';
 // 마이페이지 (v1.9) — 내 정보 수정(닉네임·프로필 이미지·비밀번호) +
 // 일반 회원: 나에게 연동된 캐릭터 리스트 · 내가 쓴 글/댓글 리스트 (관리자는 기본정보만)
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
-import { useLocalList, BOARD_SEED, GUEST_SEED, Post, GuestEntry, fmtDate } from '@/lib/postStore';
+import {
+  useLocalList, BOARD_SEED, GUEST_SEED, Post, GuestEntry, fmtDate,
+  CommentRow, COMMENT_KEY, COMMENT_SEED,
+} from '@/lib/postStore';
 import { Character, CHAR_SEED } from '@/lib/charStore';
 import { RoadItem, ROAD_SEED } from '@/lib/galleryStore';
 import { useBoards } from '@/lib/boardStore';
 import { collectMyItems, MyItem } from '@/lib/myActivity';
 import { CroppedBlobImg } from '@/components/ui/CropEditor';
-import { putBlob, useBlobUrl } from '@/lib/blobStore';
+import { putBlob, useBlobUrl, promoteToStorage } from '@/lib/blobStore';
 import { KInput } from '@/components/ui/Kit';
 import { Modal } from '@/components/ui/Modal';
 import { ColorField } from '@/components/ui/ColorField';
@@ -26,6 +29,8 @@ export default function MyPage() {
   const [posts] = useLocalList<Post>('ohome.board.v1', BOARD_SEED);
   const [roads] = useLocalList<RoadItem>('ohome.road.v1', ROAD_SEED);
   const [guestEntries] = useLocalList<GuestEntry>('ohome.guest.v1', GUEST_SEED);
+  // 댓글은 글과 따로 저장된다 (v2.0)
+  const [cmtRows] = useLocalList<CommentRow>(COMMENT_KEY, COMMENT_SEED);
   const { boards } = useBoards();
 
   const [nick, setNick] = useState('');
@@ -38,6 +43,19 @@ export default function MyPage() {
   // 프로필 이미지 선택 모달 (v1.9) — 단색 / 이미지 업로드 / 기본
   const [avOpen, setAvOpen] = useState(false);
   const [avColor, setAvColor] = useState('#6b7280');
+
+  // 백엔드를 붙이기 전에 올린 프로필 사진은 참조가 이 브라우저의 파일 id라 다른 데서 로그인하면
+  // 안 보인다 (v2.0 사용자 발견). 원본이 여기 남아 있으면 조용히 저장소로 올리고 주소로 바꿔 둔다 —
+  // 사진이 남아 있는 브라우저에서 한 번만 들르면 그 뒤로는 어디서든 보인다.
+  const avatarRef = user?.avatarUrl;
+  useEffect(() => {
+    if (!avatarRef) return;
+    let alive = true;
+    promoteToStorage(avatarRef)
+      .then(url => { if (alive && url) updateProfile({ avatarUrl: url }); })
+      .catch(() => { /* 실패하면 그대로 둔다 — 다음에 다시 시도된다 */ });
+    return () => { alive = false; };
+  }, [avatarRef, updateProfile]);
 
   // 닉네임 초기값 — user 로드 후 한 번
   if (user && !nickInit) { setNick(user.nickname); setNickInit(true); }
@@ -74,7 +92,7 @@ export default function MyPage() {
   const myChars = chars.filter(c => c.grants?.some(g => g.userId === user.id));
 
   // 내가 쓴 글/댓글 (일반 회원) — 6개까지만, 나머지는 전체 리스트에서 (v1.9)
-  const myItems: MyItem[] = collectMyItems(user.id, posts, roads, guestEntries, boards);
+  const myItems: MyItem[] = collectMyItems(user.id, posts, roads, guestEntries, boards, cmtRows);
 
   return (
     <section className="page">
