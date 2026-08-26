@@ -1,9 +1,9 @@
 {
   "kind": "firebase",
-  "apiKey": "AIzaSyAvpL5X3rgwWNj6cAaAtRnq6u6aeshN9sk",
-  "authDomain": "ohome-72031.firebaseapp.com",
-  "projectId": "ohome-72031",
-  "storageBucket": "ohome-72031.firebasestorage.app",
-  "appId": "1:456705496041:web:c93565752559860bdeb178",
-  "messagingSenderId": "456705496041"
+  "apiKey": "AIzaSyASqGUYFCKHu-GWELzd074AIVVk7vsOkXM",
+  "authDomain": "ntr-home.firebaseapp.com",
+  "projectId": "ntr-home",
+  "storageBucket": "ntr-home.firebasestorage.app",
+  "appId": "1:262004380370:web:1fc87872e3afbc10b0d30b",
+  "messagingSenderId": "262004380370"
 }
