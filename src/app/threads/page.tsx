@@ -236,11 +236,17 @@ function ThreadsPageInner() {
       title: `「${sel.title}」 타래에 새 댓글`, body: `${c.author} — ${c.text.slice(0, 50)}`,
     });
     if (replyTo) {
-      const parent = comments.find(x => x.id === replyTo);
-      if (parent?.authorId && parent.authorId !== (user?.id ?? '')) {
+      // 뿌리 주인만이 아니라 그 대화에 답글을 단 전원에게 (v2.0 포크 제보 — 게시판과 동일)
+      const rootAuthor = comments.find(x => x.id === replyTo)?.authorId;
+      const seen = new Set<string>();
+      for (const t of comments.filter(x => x.id === replyTo || x.parentId === replyTo)) {
+        const to = t.authorId;
+        if (!to || to === (user?.id ?? '') || seen.has(to)) continue;
+        seen.add(to);
         pushNotif({
-          type: 'comment', toUserId: parent.authorId, href: sectionHref('threads', sel.secId ?? 'main'),
-          title: '내 댓글에 답글이 달렸습니다', body: `${c.author} — ${c.text.slice(0, 50)}`,
+          type: 'comment', toUserId: to, href: sectionHref('threads', sel.secId ?? 'main'),
+          title: to === rootAuthor ? '내 댓글에 답글이 달렸습니다' : '참여한 댓글에 새 답글이 달렸습니다',
+          body: `${c.author} — ${c.text.slice(0, 50)}`,
         });
       }
     }
