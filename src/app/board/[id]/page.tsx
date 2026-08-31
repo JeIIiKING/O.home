@@ -99,11 +99,19 @@ export default function BoardDetailPage() {
       });
     }
     if (replyTo) {
-      const parent = comments.find(x => x.id === replyTo);
-      if (parent?.authorId && parent.authorId !== me && parent.authorId !== post.authorId) {
+      /* 뿌리 댓글 주인만이 아니라 **그 대화에 답글을 단 전원**에게 (v2.0 포크 제보 —
+         관리자가 자기 뿌리 댓글에 답하면, 사이에 답글을 단 회원이 아무것도 못 받았다).
+         글쓴이는 위에서 이미 받았으므로 뺀다. */
+      const rootAuthor = comments.find(x => x.id === replyTo)?.authorId;
+      const seen = new Set<string>();
+      for (const t of comments.filter(x => x.id === replyTo || x.parentId === replyTo)) {
+        const to = t.authorId;
+        if (!to || to === me || to === post.authorId || seen.has(to)) continue;
+        seen.add(to);
         pushNotif({
-          type: 'comment', toUserId: parent.authorId, href: `/board/${post.id}`,
-          title: '내 댓글에 답글이 달렸습니다', body: `${c.author} — ${c.text.slice(0, 50)}`,
+          type: 'comment', toUserId: to, href: `/board/${post.id}`,
+          title: to === rootAuthor ? '내 댓글에 답글이 달렸습니다' : '참여한 댓글에 새 답글이 달렸습니다',
+          body: `${c.author} — ${c.text.slice(0, 50)}`,
         });
       }
     }
