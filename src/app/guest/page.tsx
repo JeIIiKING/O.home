@@ -86,10 +86,23 @@ export default function GuestbookPage() {
     setCmtRows([...cmtRows, c]);
     setReplyFor(null); setReplyText('');
     // 알림 (4.13) — 회원이 쓴 방명록이면 그 회원에게 (본인 답글 제외)
-    if (target.authorId && target.authorId !== (user?.id ?? '')) {
+    const me = user?.id ?? '';
+    if (target.authorId && target.authorId !== me) {
       pushNotif({
         type: 'comment', toUserId: target.authorId, href: '/guest',
         title: '방명록 글에 답글이 달렸습니다',
+        body: `${c.author} — ${c.text.slice(0, 50)}`,
+      });
+    }
+    // 이 글에 먼저 답글을 단 회원들에게도 (v2.0 포크 제보 — 대화 참여자가 못 받던 것)
+    const seen = new Set<string>();
+    for (const t of repliesOf(target.id)) {
+      const to = t.authorId;
+      if (!to || to === me || to === target.authorId || seen.has(to)) continue;
+      seen.add(to);
+      pushNotif({
+        type: 'comment', toUserId: to, href: '/guest',
+        title: '참여한 방명록 대화에 새 답글이 달렸습니다',
         body: `${c.author} — ${c.text.slice(0, 50)}`,
       });
     }
